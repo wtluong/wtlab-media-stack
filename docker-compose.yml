@@ -1,0 +1,261 @@
+networks:
+  media_homelab:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.22.0.0/16
+
+volumes:
+  gluetun_data:
+  qbittorrent_data:
+  plex_data:
+  jellyfin_data:
+  tautulli_data:
+  radarr_data:
+  sonarr_data:
+  lidarr_data:
+  bazarr_data:
+  prowlarr_data:
+
+services:
+  # VPN Gateway
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    ports:
+      - "8080:8080"      # qbittorrent web UI
+      - "6881:6881"      # torrent port TCP
+      - "6881:6881/udp"  # torrent port UDP
+    environment:
+      - VPN_SERVICE_PROVIDER=mullvad
+      - VPN_TYPE=openvpn
+      - OPENVPN_USER=${MULLVAD_USER}
+      - OPENVPN_PASSWORD=${MULLVAD_PASSWORD}
+      - SERVER_COUNTRIES=United States
+    volumes:
+      - gluetun_data:/gluetun
+    networks:
+      media_homelab:
+        ipv4_address: 172.22.0.10
+
+  # Torrent Client
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE}
+      - WEBUI_PORT=8080
+    volumes:
+      - qbittorrent_data:/config
+      - ./downloads:/downloads
+
+  # Media Servers
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    restart: unless-stopped
+    ports:
+      - "32400:32400"    # Main Plex port
+      - "1900:1900/udp"  # DLNA
+      - "3005:3005"      # Plex Companion
+      - "5353:5353/udp"  # Bonjour/Avahi
+      - "8324:8324"      # Roku via Plex Companion
+      - "32410:32410/udp"  # GDM network discovery
+      - "32412:32412/udp"  # GDM network discovery
+      - "32413:32413/udp"  # GDM network discovery
+      - "32414:32414/udp"  # GDM network discovery
+      - "32469:32469"    # Plex DLNA Server
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE}
+      - VERSION=docker
+      - PLEX_CLAIM=${PLEX_CLAIM_TOKEN}
+    volumes:
+      - plex_data:/config
+      - ./media/movies:/movies
+      - ./media/tv:/tv
+      - ./media/music:/music
+    networks:
+      media_homelab:
+        ipv4_address: 172.22.0.20
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    ports:
+      - "8096:8096"
+      - "8920:8920"  # HTTPS
+      - "7359:7359/udp"  # Auto-discovery
+      - "1901:1900/udp"  # DLNA
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE}
+    volumes:
+      - jellyfin_data:/config
+      - ./media:/media
+    networks:
+      media_homelab:
+        ipv4_address: 172.22.0.21
+
+  # Monitoring
+  tautulli:
+    image: lscr.io/linuxserver/tautulli:latest
+    container_name: tautulli
+    restart: unless-stopped
+    ports:
+      - "8181:8181"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE}
+    volumes:
+      - tautulli_data:/config
+      - plex_data:/plex:ro  # Read Plex logs via volume
+    networks:
+      media_homelab:
+        ipv4_address: 172.22.0.22
+
+  # Media Management - Movies
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    restart: unless-stopped
+    ports:
+      - "7878:7878"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE}
+    volumes:
+      - radarr_data:/config
+      - ./media/movies:/movies
+      - ./downloads:/downloads
+    networks:
+      media_homelab:
+        ipv4_address: 172.22.0.30
+
+  # Media Management - TV
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: unless-stopped
+    ports:
+      - "8989:8989"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE}
+    volumes:
+      - sonarr_data:/config
+      - ./media/tv:/tv
+      - ./downloads:/downloads
+    networks:
+      media_homelab:
+        ipv4_address: 172.22.0.31
+
+  # Media Management - Music
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    restart: unless-stopped
+    ports:
+      - "8686:8686"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE}
+    volumes:
+      - lidarr_data:/config
+      - ./media/music:/music
+      - ./downloads:/downloads
+    networks:
+      media_homelab:
+        ipv4_address: 172.22.0.32
+
+  # Subtitles
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    ports:
+      - "6767:6767"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE}
+    volumes:
+      - bazarr_data:/config
+      - ./media/movies:/movies
+      - ./media/tv:/tv
+    networks:
+      media_homelab:
+        ipv4_address: 172.22.0.33
+
+  # Indexer Manager
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: unless-stopped
+    ports:
+      - "9696:9696"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE}
+    volumes:
+      - prowlarr_data:/config
+    networks:
+      media_homelab:
+        ipv4_address: 172.22.0.34
+
+  # Metrics Exporters
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    networks:
+      media_homelab:
+        ipv4_address: 172.22.0.40
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)'
+    networks:
+      media_homelab:
+        ipv4_address: 172.22.0.41
