@@ -24,3 +24,6 @@ desktop.ini
 tmp/
 temp/
 *.tmp
+
+# list; remove later, used for planning
+list

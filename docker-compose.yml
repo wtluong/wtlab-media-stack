@@ -37,7 +37,7 @@ services:
       - VPN_TYPE=openvpn
       - OPENVPN_USER=${MULLVAD_USER}
       - OPENVPN_PASSWORD=${MULLVAD_PASSWORD}
-      - SERVER_COUNTRIES=United States
+      - SERVER_COUNTRIES=USA
     volumes:
       - gluetun_data:/gluetun
     networks:
